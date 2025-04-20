@@ -137,7 +137,6 @@ class _PrayerTimingsScreenState extends State<PrayerTimingsScreen> {
           );
         } else if (prayerTimingsModel.code == 200) {
           List<String> timings = [
-            "12:18",
             prayerTimingsModel.data!.timings!.sunrise.convertTo12HourFormat(),
             prayerTimingsModel.data!.timings!.dhuhr.convertTo12HourFormat(),
             prayerTimingsModel.data!.timings!.asr.convertTo12HourFormat(),
