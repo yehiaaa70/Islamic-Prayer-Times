@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:easy_localization/easy_localization.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_phoenix/flutter_phoenix.dart';
 import 'package:geocoding/geocoding.dart';
@@ -79,49 +82,105 @@ class HomeCubit extends Cubit<HomeState> {
   Future<void> getLocation() async {
     emit(GetLocationLoadingState());
 
-    bool serviceEnabled;
-    location_package.PermissionStatus permissionGranted;
-    location_package.LocationData locationData;
-
-    serviceEnabled = await location.serviceEnabled();
-    if (!serviceEnabled) {
-      serviceEnabled = await location.requestService();
+    try {
+      // Check if location service is enabled
+      bool serviceEnabled = await location.serviceEnabled();
       if (!serviceEnabled) {
-        recordLocation =
-            (AppStrings.enableLocation.tr(), AppStrings.enableLocation.tr());
-        emit(GetLocationErrorState(AppStrings.enableLocation.tr()));
-        // return (AppStrings.enableLocation.tr(), AppStrings.enableLocation.tr());
+        serviceEnabled = await location.requestService();
+        if (!serviceEnabled) {
+          recordLocation = (
+          AppStrings.enableLocation.tr(),
+          AppStrings.enableLocation.tr()
+          );
+          emit(GetLocationErrorState(AppStrings.enableLocation.tr()));
+          return;
+        }
       }
-    }
 
-    permissionGranted = await location.hasPermission();
-    if (permissionGranted == location_package.PermissionStatus.denied) {
-      permissionGranted = await location.requestPermission();
-      if (permissionGranted != location_package.PermissionStatus.granted) {
-        emit(GetLocationErrorState(
-            AppStrings.giveLocationAccessPermission.tr()));
-        recordLocation = (
+      // Check and request permissions
+      var permissionStatus = await location.hasPermission();
+      if (permissionStatus == location_package.PermissionStatus.denied ||
+          permissionStatus == location_package.PermissionStatus.deniedForever) {
+        permissionStatus = await location.requestPermission();
+        if (permissionStatus != location_package.PermissionStatus.granted) {
+          emit(GetLocationErrorState(AppStrings.giveLocationAccessPermission.tr()));
+          recordLocation = (
           AppStrings.giveLocationAccessPermission.tr(),
           AppStrings.giveLocationAccessPermission.tr()
-        );
+          );
+          return;
+        }
       }
-    }
 
-    locationData = await location.getLocation();
-
-    List<Placemark> placeMarks = await placemarkFromCoordinates(
-        locationData.latitude!, locationData.longitude!);
-
-    if (placeMarks.isNotEmpty) {
-      recordLocation = (
-        placeMarks[0].subAdministrativeArea.toString(),
-        placeMarks[0].country.toString()
+      // Get location with timeout
+      final locationData = await location.getLocation().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw TimeoutException('Location request timed out');
+        },
       );
-      emit(GetLocationSuccessState());
-    } else {
-      recordLocation =
-          (AppStrings.noLocationFound.tr(), AppStrings.noLocationFound.tr());
-      emit(GetLocationErrorState(AppStrings.noLocationFound.tr()));
+
+      // Get placemarks with retry logic
+      List<Placemark> placeMarks = await _getPlacemarksWithRetry(
+        locationData.latitude!,
+        locationData.longitude!,
+        retries: 3,
+      );
+
+      if (placeMarks.isNotEmpty) {
+        recordLocation = (
+        placeMarks[0].subAdministrativeArea ?? placeMarks[0].locality ?? 'Unknown',
+        placeMarks[0].country ?? 'Unknown'
+        );
+        emit(GetLocationSuccessState());
+      } else {
+        recordLocation = (
+        AppStrings.noLocationFound.tr(),
+        AppStrings.noLocationFound.tr()
+        );
+        emit(GetLocationErrorState(AppStrings.noLocationFound.tr()));
+      }
+    } on PlatformException catch (e) {
+      _handleLocationError(e);
+    } on TimeoutException {
+      emit(GetLocationErrorState('Location request timed out'));
+      recordLocation = ('Timeout', 'Location request timed out');
+    } catch (e) {
+      emit(GetLocationErrorState(e.toString()));
+      recordLocation = ('Error', e.toString());
     }
   }
-}
+
+  Future<List<Placemark>> _getPlacemarksWithRetry(
+      double latitude,
+      double longitude, {
+        int retries = 3,
+      }) async {
+    for (int i = 0; i < retries; i++) {
+      try {
+        return await placemarkFromCoordinates(latitude, longitude)
+            .timeout(const Duration(seconds: 5));
+      } catch (e) {
+        if (i == retries - 1) rethrow;
+        await Future.delayed(const Duration(seconds: 1));
+      }
+    }
+    return [];
+  }
+
+  void _handleLocationError(PlatformException e) {
+    String errorMessage;
+    switch (e.code) {
+      case 'PERMISSION_DENIED':
+        errorMessage = AppStrings.giveLocationAccessPermission.tr();
+        break;
+      case 'SERVICE_STATUS_ERROR':
+        errorMessage = 'Location service unavailable';
+        break;
+      default:
+        errorMessage = e.message ?? 'Unknown location error';
+    }
+
+    emit(GetLocationErrorState(errorMessage));
+    recordLocation = (errorMessage, errorMessage);
+  }}

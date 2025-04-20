@@ -25,10 +25,11 @@ class PrayerTimingsScreen extends StatefulWidget {
 
 class _PrayerTimingsScreenState extends State<PrayerTimingsScreen> {
   final AudioPlayer _audioPlayer = AudioPlayer();
-  late StreamSubscription _timeSubscription;
+  StreamSubscription? _timeSubscription;
   bool _isStreamStarted = false;
   String? _currentAzanTime;
   bool _isAzanPlaying = false;
+
   @override
   void initState() {
     super.initState();
@@ -39,7 +40,9 @@ class _PrayerTimingsScreenState extends State<PrayerTimingsScreen> {
         _currentAzanTime = null;
       });
     });
-  }  void _playAzan(String time) async {
+  }
+
+  void _playAzan(String time) async {
     await _audioPlayer.play(AssetSource('audio/azan.mp3'));
     setState(() {
       _isAzanPlaying = true;
@@ -71,12 +74,11 @@ class _PrayerTimingsScreenState extends State<PrayerTimingsScreen> {
   }
 
   void _startListeningToTime(List<String> timings) {
-    print(",,,,");
+    if (_isStreamStarted) return;
 
     _isStreamStarted = true;
 
     _timeSubscription = Stream.periodic(Duration(seconds: 45), (_) {
-      print("mm");
       final currentTime = DateTime.now();
 
       int hour = currentTime.hour;
@@ -87,9 +89,6 @@ class _PrayerTimingsScreenState extends State<PrayerTimingsScreen> {
           "$hour:${currentTime.minute.toString().padLeft(2, '0')}";
 
       for (var timing in timings) {
-        print("timings");
-        print(timings);
-        print(currentFormattedTime);
         if (currentFormattedTime == timing && _currentAzanTime != timing) {
           _playAzan(timing);
           break;
@@ -100,7 +99,7 @@ class _PrayerTimingsScreenState extends State<PrayerTimingsScreen> {
 
   @override
   void dispose() {
-    _timeSubscription.cancel();
+    _timeSubscription?.cancel();
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -122,20 +121,23 @@ class _PrayerTimingsScreenState extends State<PrayerTimingsScreen> {
             children: [
               Text(
                 AppStrings.gettingLocation.tr(),
-                style: Theme.of(context).textTheme.bodyLarge,
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  color: Colors.black,
+                ),
               ),
-              SizedBox(height: AppSize.s5.h),
+              SizedBox(height: 5.h),
               Center(
                 child: SizedBox(
                   width: (MediaQuery.of(context).size.width * 0.55),
-                  child: const LinearProgressIndicator(color: ColorManager.gold),
+                  child: const LinearProgressIndicator(color: Colors.amber),
                 ),
               ),
             ],
           );
         } else if (prayerTimingsModel.code == 200) {
           List<String> timings = [
-            prayerTimingsModel.data!.timings!.fajr.convertTo12HourFormat(),
+            "12:18",
             prayerTimingsModel.data!.timings!.sunrise.convertTo12HourFormat(),
             prayerTimingsModel.data!.timings!.dhuhr.convertTo12HourFormat(),
             prayerTimingsModel.data!.timings!.asr.convertTo12HourFormat(),
@@ -143,38 +145,49 @@ class _PrayerTimingsScreenState extends State<PrayerTimingsScreen> {
             prayerTimingsModel.data!.timings!.isha.convertTo12HourFormat(),
           ];
 
-          _startListeningToTime(timings);
+          if (!_isStreamStarted) {
+            _startListeningToTime(timings);
+          }
 
           return SingleChildScrollView(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Padding(
-                  padding: EdgeInsets.symmetric(vertical: AppSize.s5.h),
+                  padding: EdgeInsets.symmetric(vertical: 5.h),
                   child: Text(
                     isEnglish
                         ? prayerTimingsModel.data!.date!.gregorian!.weekday!.en
                         : prayerTimingsModel.data!.date!.hijri!.weekday!.ar,
-                    style: Theme.of(context).textTheme.displayMedium,
+                    style: TextStyle(
+                      fontSize: 24.sp,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
                   ),
                 ),
                 isEnglish
                     ? Text(
                   "${prayerTimingsModel.data!.date!.hijri!.day} ${prayerTimingsModel.data!.date!.hijri!.month!.en} ${prayerTimingsModel.data!.date!.hijri!.year}",
-                  style: GoogleFonts.aBeeZee(),
-                  textAlign: TextAlign.start,
-                  textDirection: ui.TextDirection.ltr,
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    color: Colors.black,
+                  ),
                 )
                     : Text(
                   "${prayerTimingsModel.data!.date!.hijri!.day} ${prayerTimingsModel.data!.date!.hijri!.month!.ar} ${prayerTimingsModel.data!.date!.hijri!.year}",
-                  style: Theme.of(context).textTheme.bodyLarge,
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    color: Colors.black,
+                  ),
                 ),
                 Padding(
-                  padding: EdgeInsets.symmetric(vertical: AppSize.s5.h),
+                  padding: EdgeInsets.symmetric(vertical: 5.h),
                   child: Text(
                     prayerTimingsModel.data!.date!.gregorian!.date,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).unselectedWidgetColor,
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: Colors.grey,
                     ),
                   ),
                 ),
@@ -183,11 +196,14 @@ class _PrayerTimingsScreenState extends State<PrayerTimingsScreen> {
                     padding: const EdgeInsets.all(8.0),
                     child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.redAccent,
+                        backgroundColor: Colors.red,
                       ),
                       onPressed: _stopAzan,
-                      icon: const Icon(Icons.stop),
-                      label: const Text("Stop Azan"),
+                      icon: const Icon(Icons.stop, color: Colors.white),
+                      label: const Text(
+                        "Stop Azan",
+                        style: TextStyle(color: Colors.white),
+                      ),
                     ),
                   ),
                 ...List.generate(Constants.prayerNumbers, (index) {
@@ -209,10 +225,11 @@ class _PrayerTimingsScreenState extends State<PrayerTimingsScreen> {
                   ? AppStrings.noInternetConnection.tr()
                   : AppStrings.noLocationFound.tr(),
               textAlign: TextAlign.center,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(height: AppSize.s1_3.h),
+              style: TextStyle(
+                fontSize: 14.sp,
+                color: Colors.black,
+                height: 1.3.h,
+              ),
             ),
           );
         }
@@ -241,36 +258,34 @@ class _PrayerTimingsScreenState extends State<PrayerTimingsScreen> {
                   isEnglish
                       ? AppStrings.englishPrayerNames[index]
                       : AppStrings.arabicPrayerNames[index],
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontFamily: FontConstants.elMessiriFontFamily,
-                    color: isCurrent ? Colors.red : null,
+                  style: TextStyle(
+                    fontSize: 18.sp,
+                    color: isCurrent ? Colors.red : Colors.black,
                   ),
                 ),
-                SizedBox(height: AppSize.s5.h),
+                SizedBox(height: 5.h),
                 Text(
                   isEnglish
                       ? AppStrings.arabicPrayerNames[index]
                       : AppStrings.englishPrayerNames[index],
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontFamily: FontConstants.elMessiriFontFamily,
-                    color: isCurrent
-                        ? Colors.red
-                        : Theme.of(context).unselectedWidgetColor,
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: isCurrent ? Colors.red : Colors.grey,
                   ),
                 ),
               ],
             ),
-            SizedBox(width: AppSize.s35.w),
+            SizedBox(width: 35.w),
             Text(
               timings[index],
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontFamily: FontConstants.uthmanTNFontFamily,
-                color: isCurrent ? Colors.red : null,
+              style: TextStyle(
+                fontSize: 18.sp,
+                color: isCurrent ? Colors.red : Colors.black,
               ),
             ),
           ],
         ),
-        getSeparator(context),
+        Divider(color: Colors.grey[300], thickness: 1),
       ],
     );
   }

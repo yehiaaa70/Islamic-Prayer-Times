@@ -32,13 +32,13 @@ class DioFactory {
         sendTimeout: Constants.timeOut,
         receiveTimeout: Constants.timeOut);
 
-    if (kDebugMode) {
+    // if (kDebugMode) {
       dio.interceptors.add(PrettyDioLogger(
         requestHeader: true,
         requestBody: true,
         responseHeader: true,
       ));
-    }
+    // }
 
     return dio;
   }

@@ -1,0 +1,3 @@
+-keep class com.lyokone.location.** { *; }
+-keep class com.baseflow.geocoding.** { *; }
+-keep class com.baseflow.permissionhandler.** { *; }

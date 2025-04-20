@@ -24,10 +24,8 @@ class HomeView extends StatelessWidget {
         backgroundColor: Theme.of(context).primaryColor,
         title: Text(
           HomeViewModel().titles[0],
-          style: Theme.of(context)
-              .textTheme
-              .titleLarge
-              ?.copyWith(color: ColorManager.gold),
+          style: TextStyle(color: Colors.black), // Ensure color contrast
+
         ),
 
 
