@@ -1,0 +1,277 @@
+import 'dart:async';
+import 'dart:ui' as ui;
+
+import 'package:audioplayers/audioplayers.dart';
+import 'package:easy_localization/easy_localization.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:islamic/app/utils/extensions.dart';
+
+import '../../../../../app/utils/constants.dart';
+import '../../../../../domain/models/prayer_timings/prayer_timings_model.dart';
+import '../../../../components/separator.dart';
+import '../../../../../app/resources/resources.dart';
+
+import '../cubit/prayer_timings_cubit.dart';
+
+class PrayerTimingsScreen extends StatefulWidget {
+  const PrayerTimingsScreen({Key? key}) : super(key: key);
+
+  @override
+  State<PrayerTimingsScreen> createState() => _PrayerTimingsScreenState();
+}
+
+class _PrayerTimingsScreenState extends State<PrayerTimingsScreen> {
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  late StreamSubscription _timeSubscription;
+  bool _isStreamStarted = false;
+  String? _currentAzanTime;
+  bool _isAzanPlaying = false;
+  @override
+  void initState() {
+    super.initState();
+
+    _audioPlayer.onPlayerComplete.listen((event) {
+      setState(() {
+        _isAzanPlaying = false;
+        _currentAzanTime = null;
+      });
+    });
+  }  void _playAzan(String time) async {
+    await _audioPlayer.play(AssetSource('audio/azan.mp3'));
+    setState(() {
+      _isAzanPlaying = true;
+      _currentAzanTime = time;
+    });
+  }
+
+  void _stopAzan() async {
+    await _audioPlayer.stop();
+    setState(() {
+      _isAzanPlaying = false;
+      _currentAzanTime = null;
+    });
+  }
+
+  String convertTo12HourFormat(String time) {
+    final parts = time.split(":");
+    int hour = int.parse(parts[0]);
+    int minute = int.parse(parts[1]);
+
+    if (hour > 12) {
+      hour -= 12;
+    }
+    if (hour == 0) {
+      hour = 12;
+    }
+
+    return "$hour:${minute.toString().padLeft(2, '0')}";
+  }
+
+  void _startListeningToTime(List<String> timings) {
+    print(",,,,");
+
+    _isStreamStarted = true;
+
+    _timeSubscription = Stream.periodic(Duration(seconds: 45), (_) {
+      print("mm");
+      final currentTime = DateTime.now();
+
+      int hour = currentTime.hour;
+      if (hour > 12) hour -= 12;
+      if (hour == 0) hour = 12;
+
+      final currentFormattedTime =
+          "$hour:${currentTime.minute.toString().padLeft(2, '0')}";
+
+      for (var timing in timings) {
+        print("timings");
+        print(timings);
+        print(currentFormattedTime);
+        if (currentFormattedTime == timing && _currentAzanTime != timing) {
+          _playAzan(timing);
+          break;
+        }
+      }
+    }).listen((_) {});
+  }
+
+  @override
+  void dispose() {
+    _timeSubscription.cancel();
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<PrayerTimingsCubit, PrayerTimingsState>(
+      builder: (context, state) {
+        PrayerTimingsCubit cubit = PrayerTimingsCubit.get(context);
+        PrayerTimingsModel prayerTimingsModel = cubit.prayerTimingsModel;
+        bool isConnected = cubit.isConnected;
+        final currentLocale = context.locale;
+        bool isEnglish =
+            currentLocale.languageCode == LanguageType.english.getValue();
+
+        if (prayerTimingsModel.code == 0) {
+          return Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                AppStrings.gettingLocation.tr(),
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              SizedBox(height: AppSize.s5.h),
+              Center(
+                child: SizedBox(
+                  width: (MediaQuery.of(context).size.width * 0.55),
+                  child: const LinearProgressIndicator(color: ColorManager.gold),
+                ),
+              ),
+            ],
+          );
+        } else if (prayerTimingsModel.code == 200) {
+          List<String> timings = [
+            prayerTimingsModel.data!.timings!.fajr.convertTo12HourFormat(),
+            prayerTimingsModel.data!.timings!.sunrise.convertTo12HourFormat(),
+            prayerTimingsModel.data!.timings!.dhuhr.convertTo12HourFormat(),
+            prayerTimingsModel.data!.timings!.asr.convertTo12HourFormat(),
+            prayerTimingsModel.data!.timings!.maghrib.convertTo12HourFormat(),
+            prayerTimingsModel.data!.timings!.isha.convertTo12HourFormat(),
+          ];
+
+          _startListeningToTime(timings);
+
+          return SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Padding(
+                  padding: EdgeInsets.symmetric(vertical: AppSize.s5.h),
+                  child: Text(
+                    isEnglish
+                        ? prayerTimingsModel.data!.date!.gregorian!.weekday!.en
+                        : prayerTimingsModel.data!.date!.hijri!.weekday!.ar,
+                    style: Theme.of(context).textTheme.displayMedium,
+                  ),
+                ),
+                isEnglish
+                    ? Text(
+                  "${prayerTimingsModel.data!.date!.hijri!.day} ${prayerTimingsModel.data!.date!.hijri!.month!.en} ${prayerTimingsModel.data!.date!.hijri!.year}",
+                  style: GoogleFonts.aBeeZee(),
+                  textAlign: TextAlign.start,
+                  textDirection: ui.TextDirection.ltr,
+                )
+                    : Text(
+                  "${prayerTimingsModel.data!.date!.hijri!.day} ${prayerTimingsModel.data!.date!.hijri!.month!.ar} ${prayerTimingsModel.data!.date!.hijri!.year}",
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(vertical: AppSize.s5.h),
+                  child: Text(
+                    prayerTimingsModel.data!.date!.gregorian!.date,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).unselectedWidgetColor,
+                    ),
+                  ),
+                ),
+                if (_isAzanPlaying)
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.redAccent,
+                      ),
+                      onPressed: _stopAzan,
+                      icon: const Icon(Icons.stop),
+                      label: const Text("Stop Azan"),
+                    ),
+                  ),
+                ...List.generate(Constants.prayerNumbers, (index) {
+                  return _prayerIndexItem(
+                    isEnglish: isEnglish,
+                    context: context,
+                    timings: timings,
+                    prayerTimingsModel: prayerTimingsModel,
+                    index: index,
+                  );
+                }),
+              ],
+            ),
+          );
+        } else {
+          return Center(
+            child: Text(
+              !isConnected
+                  ? AppStrings.noInternetConnection.tr()
+                  : AppStrings.noLocationFound.tr(),
+              textAlign: TextAlign.center,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(height: AppSize.s1_3.h),
+            ),
+          );
+        }
+      },
+    );
+  }
+
+  Widget _prayerIndexItem({
+    required PrayerTimingsModel prayerTimingsModel,
+    required List<String> timings,
+    required int index,
+    required bool isEnglish,
+    required BuildContext context,
+  }) {
+    bool isCurrent = timings[index] == _currentAzanTime;
+
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isEnglish
+                      ? AppStrings.englishPrayerNames[index]
+                      : AppStrings.arabicPrayerNames[index],
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontFamily: FontConstants.elMessiriFontFamily,
+                    color: isCurrent ? Colors.red : null,
+                  ),
+                ),
+                SizedBox(height: AppSize.s5.h),
+                Text(
+                  isEnglish
+                      ? AppStrings.arabicPrayerNames[index]
+                      : AppStrings.englishPrayerNames[index],
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontFamily: FontConstants.elMessiriFontFamily,
+                    color: isCurrent
+                        ? Colors.red
+                        : Theme.of(context).unselectedWidgetColor,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(width: AppSize.s35.w),
+            Text(
+              timings[index],
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontFamily: FontConstants.uthmanTNFontFamily,
+                color: isCurrent ? Colors.red : null,
+              ),
+            ),
+          ],
+        ),
+        getSeparator(context),
+      ],
+    );
+  }
+}
